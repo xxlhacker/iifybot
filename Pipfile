@@ -7,9 +7,10 @@ name = "pypi"
 python-dotenv = "*"
 certifi = "*"
 slack-sdk = "*"
-flask = "*"
+flask = {extras = ["async"], version = "*"}
 slackeventsapi = "*"
 black = "*"
+rich = "*"
 
 [dev-packages]
 
