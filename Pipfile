@@ -11,6 +11,8 @@ flask = {extras = ["async"], version = "*"}
 slackeventsapi = "*"
 black = "*"
 rich = "*"
+requests = "*"
+bleach = "*"
 
 [dev-packages]
 

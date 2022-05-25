@@ -4,6 +4,7 @@ import os
 import ssl
 import certifi
 import utilities
+import bleach
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, request, Response
@@ -29,6 +30,7 @@ async def iify():
     user_id = data.get("user_id")
     channel_id = data.get("channel_id")
     channel_name = data.get("channel_name")
+    slack_comment = ":exclamation:Your results are greater than 3300 characters.\nSo, here's your CVE lookup results as a file! :smile:"
     results = await utilities.is_it_fixed_yet(text=data.get("text"))
     if results != "use_html_file":
         if channel_name != "directmessage":
@@ -36,11 +38,46 @@ async def iify():
         else:
             client.chat_postMessage(channel=user_id, text=results)
     else:
-        client.files_upload(
-            channels=channel_id,
-            initial_comment="Here's your CVE lookup results! :smile:",
-            file="./iify_results.html",
-        )
+        if channel_name != "directmessage":
+            client.files_upload(
+                channels=channel_id,
+                initial_comment=slack_comment,
+                file="./iify_results.html",
+                title="iify_results.html",
+                filename="iify_results.html",
+                filetype="html",
+            )
+        else:
+            client.files_upload(
+                channels=user_id,
+                initial_comment=slack_comment,
+                file="./iify_results.html",
+                title="iify_results.html",
+                filename="iify_results.html",
+                filetype="html",
+            )
+    return Response(), 200
+
+
+@app.route("/sbom", methods=["POST"])
+def sbom():
+    data = request.form
+    user_id = data.get("user_id")
+    channel_id = data.get("channel_id")
+    channel_name = data.get("channel_name")
+    sanitized_user_text = bleach.clean(data.get("text"))
+    results = (
+        "============================================================\n"
+        f"Looking up RPMs data for the newest release of `{sanitized_user_text}`"
+        "\n============================================================\n\n"
+    )
+    image_id = utilities.get_newest_image_id(image_tag=sanitized_user_text)
+    results += utilities.get_catalog_rpm_data(image_id)
+    if channel_name != "directmessage":
+        client.chat_postMessage(channel=channel_id, text=results)
+    else:
+        client.chat_postMessage(channel=user_id, text=results)
+
     return Response(), 200
 
 
