@@ -1,7 +1,7 @@
 import aiohttp
 import asyncio
-import os
-import configparser
+import requests
+import bleach
 from rich.console import Console
 from rich.theme import Theme
 from rich.panel import Panel
@@ -24,9 +24,10 @@ async def is_it_fixed_yet(text: str):
     list_of_cves = iify_user_input_parser(text=text)
     rhsa_results = await get_rhsa_data(list_of_cves=list_of_cves)
     rhsa_parsed_results = rhsa_data_parser(rhsa_results=rhsa_results, list_of_cves=list_of_cves)
-    if len(rhsa_parsed_results) > 10:
+    print(len(str(rhsa_parsed_results)))
+    if len(str(rhsa_parsed_results)) >= 3300:
         rhsa_results_output(rhsa_parsed_results, list_of_cves)
-        return 'use_html_file'
+        return "use_html_file"
     else:
         results = iify_slack_output_formater(rhsa_parsed_results=rhsa_parsed_results, list_of_cves=list_of_cves)
         return results
@@ -72,7 +73,7 @@ def rhsa_data_parser(rhsa_results, list_of_cves):
                     for data in r["affected_release"]:
                         if data["product_name"] == "Red Hat Enterprise Linux 8":
                             parsed_string = (
-                                f'{r["bugzilla"]["description"]}\n'
+                                f'\n{r["bugzilla"]["description"]}\n'
                                 f'  > PRODUCT NAME: {data["product_name"]}\n'
                                 f"  > RED HAT FIX STATE: Fixed\n"
                                 f'  > RED HAT FIXED PACKAGE: {data["package"]}\n'
@@ -91,7 +92,7 @@ def rhsa_data_parser(rhsa_results, list_of_cves):
                     for data in r["package_state"]:
                         if data["product_name"] == "Red Hat Enterprise Linux 8":
                             parsed_string = (
-                                f'{r["bugzilla"]["description"]}\n'
+                                f'\n{r["bugzilla"]["description"]}\n'
                                 f'  > PRODUCT NAME: {data["product_name"]}\n'
                                 f'  > RED HAT FIX STATE: {data["fix_state"]}\n'
                                 f'  > RED HAT PACKAGE: {data["package_name"]}\n'
@@ -112,12 +113,13 @@ def rhsa_data_parser(rhsa_results, list_of_cves):
 def iify_slack_output_formater(rhsa_parsed_results, list_of_cves):
     return_str = ""
     for cve in list_of_cves:
-        return_str += f"======================\n{cve}\n======================\n"
+        return_str += f"\n======================\n{cve}\n======================\n"
         return_str += "```"
         for results in rhsa_parsed_results:
             if cve in results:
                 return_str += f"{results}"
         return_str += "```"
+    print(return_str)
     return return_str
 
 
@@ -161,19 +163,40 @@ def rhsa_results_output(rhsa_parsed_results, list_of_cves):
                         results_output += f"{highlight[0]}:[warning]{highlight[1]}[/]\n"
                         continue
                     results_output += f"{item}\n"
-        if len(rhsa_parsed_results) <= 10:
-            console.print(Panel(results_output, title=cve, title_align="left", style=panel_style))
-        else:
-            with console.capture() as _:
-                console.print(Panel(results_output, title=cve, title_align="left", style=panel_style))
-    if len(rhsa_parsed_results) > 10:
-        html_template = '<!DOCTYPE html>\n<head>\n<meta charset="UTF-8">\n \
-        <style>\n{stylesheet}\nbody {{\n    color: #ffffff;\n    background-color: #2f3030;\n}}\n \
-        </style>\n</head>\n<html>\n<body>\n    <code>\n        <pre style="font-family:Menlo,\'DejaVu Sans Mono\',consolas, \
-        \'Courier New\',monospace"><font size="2">{code}</font></pre>\n    </code>\n</body>\n</html>\n'
-        
-        console.save_html(
-            path="./iify_results.html",
-            code_format=html_template,
-        )
-        # console.print(f"   > Results have been save a [good]{file_path}[/]")
+
+        console.print(Panel(results_output, title=cve, title_align="left", style=panel_style))
+
+    html_template = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n \
+    <style>\n{stylesheet}\nbody {{\n    color: #ffffff;\n    background-color: #2f3030;\n}}\n \
+    </style>\n</head>\n<html>\n<body>\n    <code>\n        <pre style="font-family:Menlo,\'DejaVu Sans Mono\',consolas, \
+    \'Courier New\',monospace"><font size="2">{code}</font></pre>\n    </code>\n</body>\n</html>\n'
+
+    console.save_html(
+        path="./iify_results.html",
+        code_format=html_template,
+    )
+
+
+def get_newest_image_id(image_tag: str):
+    r = requests.get(
+        f"https://catalog.redhat.com/api/containers/v1/"
+        f"repositories/registry/registry.access.redhat.com/repository/{image_tag}/images?page_size=500"
+    )
+    if r.status_code == 200:
+        response = r.json()
+        creation_date_list = [data["creation_date"] for data in response["data"] if data["architecture"] == "amd64"]
+
+        for data in response["data"]:
+            if data["creation_date"] == sorted(creation_date_list)[-1]:
+                return data["_id"]
+
+
+def get_catalog_rpm_data(image_id: str):
+    try:
+        r = requests.get(f"https://catalog.redhat.com/api/containers/v1/images/id/{image_id}/rpm-manifest")
+        if r.status_code == 200:
+            response = r.json()
+            rpm_data_list = [f"{rpms['nvra']}" for rpms in response["rpms"]]
+            return "".join(f"{item}\n" for item in sorted(rpm_data_list))
+    except KeyError:
+        return "Sorry I could not find the image you where looking for. Did you format your Image Tag Correctly?\n - Example: `ubi8/ubi`"
