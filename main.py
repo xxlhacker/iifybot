@@ -41,25 +41,25 @@ async def iify():
     results = await utilities.is_it_fixed_yet(text=sanitized_user_text)
     if results == "use_html_file":
         slack_comment = (
-            "Your results are greater than 3300 characters.\nSo, here's your CVE lookup results as a file! :smile:"
+            "Your results are greater than 3300 characters.\nSo, here's your CVE lookup results as a PDF! :smile:"
         )
         if channel_name != "directmessage":
             client.files_upload(
                 channels=channel_id,
                 initial_comment=slack_comment,
-                file="./iify_results.html",
-                title="iify_results.html",
-                filename="iify_results.html",
-                filetype="html",
+                file="./iify_results.pdf",
+                title="iify_results.pdf",
+                filename="iify_results.pdf",
+                filetype="pdf",
             )
         else:
             client.files_upload(
                 channels=user_id,
                 initial_comment=slack_comment,
-                file="./iify_results.html",
-                title="iify_results.html",
-                filename="iify_results.html",
-                filetype="html",
+                file="./iify_results.pdf",
+                title="iify_results.pdf",
+                filename="iify_results.pdf",
+                filetype="pdf",
             )
     elif channel_name != "directmessage":
         client.chat_postMessage(channel=channel_id, text=results)
@@ -75,27 +75,51 @@ def sbom():
         user_id = data.get("user_id")
         channel_id = data.get("channel_id")
         channel_name = data.get("channel_name")
-        sanitized_user_text = bleach.clean(data.get("text"))
+        sanitized_user_text = bleach.clean(data.get("text").lower())
         log.info(f"USER: {data.get('user_name')} | COMMAND: /sbom | INPUT: {sanitized_user_text}")
-        results = (
-            "============================================================\n"
-            f"Looking up RPMs data for the newest release of `{sanitized_user_text}`"
-            "\n============================================================\n\n"
-        )
         image_id = utilities.get_newest_image_id(image_tag=sanitized_user_text)
-        results += utilities.get_catalog_rpm_data(image_id)
+        rpm_data = utilities.get_catalog_rpm_data(image_id)
+        utilities.write_catalog_rpm_file(image_tag=sanitized_user_text, rpm_data=rpm_data)
+        slack_comment = f"Here are you RPM results for the newest release of `{sanitized_user_text.upper()}`! :smile:"
         if channel_name != "directmessage":
-            client.chat_postMessage(channel=channel_id, text=results)
+            client.files_upload(
+                channels=channel_id,
+                initial_comment=slack_comment,
+                file="./rpm_lookup.txt",
+                title="rpm_lookup.txt",
+                filename="rpm_lookup.txt",
+            )
         else:
-            client.chat_postMessage(channel=user_id, text=results)
+            client.files_upload(
+                channels=user_id,
+                initial_comment=slack_comment,
+                file="./rpm_lookup.txt",
+                title="rpm_lookup.txt",
+                filename="rpm_lookup.txt",
+            )
         return Response(), 200
     except TypeError:
-        text = "Sorry I could not find the image you where looking for. Did you format your Image Tag Correctly?\n - Example: `ubi8/ubi`"
+        text = "Sorry I could not find the image you where looking for. Did you format your Image Tag Correctly?\n - Example: `ubi8/ubi` or `rhel8/python-38`"
         if channel_name != "directmessage":
             client.chat_postMessage(channel=channel_id, text=text)
         else:
             client.chat_postMessage(channel=user_id, text=text)
         return Response(), 200
+
+
+@app.route("/iify_help", methods=["POST"])
+def iify_help():
+    data = request.form
+    user_id = data.get("user_id")
+    channel_id = data.get("channel_id")
+    channel_name = data.get("channel_name")
+    log.info(f"USER: {data.get('user_name')} | COMMAND: /iify_help | INPUT: N/A")
+    help_text = utilities.get_help_text()
+    if channel_name != "directmessage":
+        client.chat_postMessage(channel=channel_id, text=help_text)
+    else:
+        client.chat_postMessage(channel=user_id, text=help_text)
+    return Response(), 200
 
 
 if __name__ == "__main__":
