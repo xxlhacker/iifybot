@@ -36,10 +36,13 @@ async def iify():
     user_id = data.get("user_id")
     channel_id = data.get("channel_id")
     channel_name = data.get("channel_name")
-    log.info(f"USER: {data.get('user_name')} | COMMAND: /iffy | INPUT: {data.get('text')}", extra={"markup": True})
-    results = await utilities.is_it_fixed_yet(text=data.get("text"))
+    sanitized_user_text = bleach.clean(data.get("text"))
+    log.info(f"USER: {data.get('user_name')} | COMMAND: /iffy | INPUT: {sanitized_user_text}", extra={"markup": True})
+    results = await utilities.is_it_fixed_yet(text=sanitized_user_text)
     if results == "use_html_file":
-        slack_comment = "Your results are greater than 3300 characters.\nSo, here's your CVE lookup results as a file! :smile:"
+        slack_comment = (
+            "Your results are greater than 3300 characters.\nSo, here's your CVE lookup results as a file! :smile:"
+        )
         if channel_name != "directmessage":
             client.files_upload(
                 channels=channel_id,
