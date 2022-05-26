@@ -1,6 +1,7 @@
 import aiohttp
 import asyncio
 import requests
+import pdfkit
 from rich.console import Console
 from rich.theme import Theme
 from rich.panel import Panel
@@ -125,7 +126,7 @@ def rhsa_results_output(rhsa_parsed_results, list_of_cves):
     console = Console(theme=cve_theme, record=True)
     panel_style = "#03fce3"
     # file_path = os.path.join(os.getcwd(), f"{config['default']['OUTPUT_IS_IT_FIXED_FILE']}")
-    console.print(Markdown('# "IS IT FIXED YET?" RESULTS'))
+    console.print(Markdown('# "IS IT FIXED YET?" RESULTS'), width=200)
     # if len(rhsa_parsed_results) <= 10:
     # Takes results and splits then on new line characters
     # and highlights (aka colors) the CVE, Package, and Status
@@ -158,7 +159,7 @@ def rhsa_results_output(rhsa_parsed_results, list_of_cves):
                         continue
                     results_output += f"{item}\n"
 
-        console.print(Panel(results_output, title=cve, title_align="left", style=panel_style))
+        console.print(Panel(results_output, title=cve, title_align="left", width=200, style=panel_style))
 
     html_template = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n \
     <style>\n{stylesheet}\nbody {{\n    color: #ffffff;\n    background-color: #2f3030;\n}}\n \
@@ -169,6 +170,7 @@ def rhsa_results_output(rhsa_parsed_results, list_of_cves):
         path="./iify_results.html",
         code_format=html_template,
     )
+    pdfkit.from_file("iify_results.html", "iify_results.pdf")
 
 
 def get_newest_image_id(image_tag: str):
@@ -194,3 +196,29 @@ def get_catalog_rpm_data(image_id: str):
             return "".join(f"{item}\n" for item in sorted(rpm_data_list))
     except KeyError:
         return "Sorry I could not find the image you where looking for. Did you format your Image Tag Correctly?\n - Example: `ubi8/ubi`"
+
+
+def write_catalog_rpm_file(image_tag: str, rpm_data: str):
+    results = (
+        "============================================================\n"
+        f"RPM data for the newest release of {image_tag.upper()}"
+        "\n============================================================\n\n"
+    )
+    results += rpm_data
+    with open("rpm_lookup.txt", "w") as f:
+        f.write(results)
+
+
+def get_help_text():
+    return (
+        "==============================\n"
+        '*IIFY "/" (Slash) Commands*\n'
+        "==============================\n\n"
+        "`/iffy` - This command gives back information on one or more CVEs\n\n"
+        ">EXAMPLE: `/iffy cve-xxxx-xxxxx` or `/iffy cve-xxxx-xxxxx cve-xxxx-xxxxx cve-xxxx-xxxxx`\n\n\n"
+        "`/sbom` - Provide a Container Image name from the Red Hat Catalog and get a listing of the image's included RPMs and their version.\n\n"
+        ">NOTE: This will only provide the RPMs of newest version of the Container Image provide.\n"
+        ">EXAMPLE: `/sbom ubi8/ubi` or `/sbom rhel8/python-38`\n\n\n"
+        "`/art` - Idk, it does stuff that Kent made...\n\n"
+        ">EXAMPLE: n/a\n\n\n"
+    )

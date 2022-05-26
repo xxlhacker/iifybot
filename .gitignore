@@ -3,3 +3,5 @@ __local_testing
 .dccache
 .env
 iify_results.html
+iify_results.pdf
+rpm_lookup.txt
