@@ -5,11 +5,17 @@ import ssl
 import certifi
 import utilities
 import bleach
+import logging
+from rich.logging import RichHandler
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, request, Response
 from slackeventsapi import SlackEventAdapter
 
+# Rich Logging Setup
+FORMAT = "%(message)s"
+logging.basicConfig(level="INFO", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()])
+log = logging.getLogger("rich")
 
 # Load Slack API key from .env file
 env_path = Path(".") / ".env"
@@ -30,14 +36,10 @@ async def iify():
     user_id = data.get("user_id")
     channel_id = data.get("channel_id")
     channel_name = data.get("channel_name")
-    slack_comment = ":exclamation:Your results are greater than 3300 characters.\nSo, here's your CVE lookup results as a file! :smile:"
+    log.info(f"USER: {data.get('user_name')} | COMMAND: /iffy | INPUT: {data.get('text')}", extra={"markup": True})
     results = await utilities.is_it_fixed_yet(text=data.get("text"))
-    if results != "use_html_file":
-        if channel_name != "directmessage":
-            client.chat_postMessage(channel=channel_id, text=results)
-        else:
-            client.chat_postMessage(channel=user_id, text=results)
-    else:
+    if results == "use_html_file":
+        slack_comment = "Your results are greater than 3300 characters.\nSo, here's your CVE lookup results as a file! :smile:"
         if channel_name != "directmessage":
             client.files_upload(
                 channels=channel_id,
@@ -56,29 +58,41 @@ async def iify():
                 filename="iify_results.html",
                 filetype="html",
             )
+    elif channel_name != "directmessage":
+        client.chat_postMessage(channel=channel_id, text=results)
+    else:
+        client.chat_postMessage(channel=user_id, text=results)
     return Response(), 200
 
 
 @app.route("/sbom", methods=["POST"])
 def sbom():
-    data = request.form
-    user_id = data.get("user_id")
-    channel_id = data.get("channel_id")
-    channel_name = data.get("channel_name")
-    sanitized_user_text = bleach.clean(data.get("text"))
-    results = (
-        "============================================================\n"
-        f"Looking up RPMs data for the newest release of `{sanitized_user_text}`"
-        "\n============================================================\n\n"
-    )
-    image_id = utilities.get_newest_image_id(image_tag=sanitized_user_text)
-    results += utilities.get_catalog_rpm_data(image_id)
-    if channel_name != "directmessage":
-        client.chat_postMessage(channel=channel_id, text=results)
-    else:
-        client.chat_postMessage(channel=user_id, text=results)
-
-    return Response(), 200
+    try:
+        data = request.form
+        user_id = data.get("user_id")
+        channel_id = data.get("channel_id")
+        channel_name = data.get("channel_name")
+        sanitized_user_text = bleach.clean(data.get("text"))
+        log.info(f"USER: {data.get('user_name')} | COMMAND: /sbom | INPUT: {sanitized_user_text}")
+        results = (
+            "============================================================\n"
+            f"Looking up RPMs data for the newest release of `{sanitized_user_text}`"
+            "\n============================================================\n\n"
+        )
+        image_id = utilities.get_newest_image_id(image_tag=sanitized_user_text)
+        results += utilities.get_catalog_rpm_data(image_id)
+        if channel_name != "directmessage":
+            client.chat_postMessage(channel=channel_id, text=results)
+        else:
+            client.chat_postMessage(channel=user_id, text=results)
+        return Response(), 200
+    except TypeError:
+        text = "Sorry I could not find the image you where looking for. Did you format your Image Tag Correctly?\n - Example: `ubi8/ubi`"
+        if channel_name != "directmessage":
+            client.chat_postMessage(channel=channel_id, text=text)
+        else:
+            client.chat_postMessage(channel=user_id, text=text)
+        return Response(), 200
 
 
 if __name__ == "__main__":

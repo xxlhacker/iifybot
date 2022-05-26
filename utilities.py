@@ -24,22 +24,18 @@ async def is_it_fixed_yet(text: str):
     list_of_cves = iify_user_input_parser(text=text)
     rhsa_results = await get_rhsa_data(list_of_cves=list_of_cves)
     rhsa_parsed_results = rhsa_data_parser(rhsa_results=rhsa_results, list_of_cves=list_of_cves)
-    print(len(str(rhsa_parsed_results)))
-    if len(str(rhsa_parsed_results)) >= 3300:
-        rhsa_results_output(rhsa_parsed_results, list_of_cves)
-        return "use_html_file"
-    else:
-        results = iify_slack_output_formater(rhsa_parsed_results=rhsa_parsed_results, list_of_cves=list_of_cves)
-        return results
+    if len(str(rhsa_parsed_results)) < 3300:
+        return iify_slack_output_formater(rhsa_parsed_results=rhsa_parsed_results, list_of_cves=list_of_cves)
+
+    rhsa_results_output(rhsa_parsed_results, list_of_cves)
+    return "use_html_file"
 
 
 # Take in User supplied list of CVEs, sanitizes the input, pushes it to "get_rhsa_data()"
 def iify_user_input_parser(text: str):
-    list_of_cves = []
     user_input_list = text.split(" ")
-    for item in user_input_list:
-        if item.upper().startswith("CVE"):
-            list_of_cves.append(item.upper())
+    list_of_cves = [item.upper() for item in user_input_list if item.upper().startswith("CVE")]
+
     return list(dict.fromkeys(list_of_cves))
 
 
@@ -119,7 +115,6 @@ def iify_slack_output_formater(rhsa_parsed_results, list_of_cves):
             if cve in results:
                 return_str += f"{results}"
         return_str += "```"
-    print(return_str)
     return return_str
 
 
