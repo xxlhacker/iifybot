@@ -10,10 +10,11 @@ slack-sdk = "*"
 flask = {extras = ["async"], version = "*"}
 slackeventsapi = "*"
 black = "*"
-rich = "*"
+rich = "==11.2.0"
 requests = "*"
 bleach = "*"
 pdfkit = "*"
+aiohttp = "==3.8.1"
 
 [dev-packages]
 

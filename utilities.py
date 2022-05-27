@@ -17,7 +17,6 @@ cve_theme = Theme(
         "truwhite": "#ffffff",
     }
 )
-console = Console(theme=cve_theme)
 
 
 async def is_it_fixed_yet(text: str):
@@ -121,45 +120,39 @@ def iify_slack_output_formater(rhsa_parsed_results, list_of_cves):
 # Takes the final formatted version of the RHSA data and prints it to the terminal,
 # or writes that data to a file depending on the length of the results.
 def rhsa_results_output(rhsa_parsed_results, list_of_cves):
-    # config = configparser.ConfigParser()
-    # config.read("config.ini")
     console = Console(theme=cve_theme, record=True)
     panel_style = "#03fce3"
-    # file_path = os.path.join(os.getcwd(), f"{config['default']['OUTPUT_IS_IT_FIXED_FILE']}")
-    console.print(Markdown('# "IS IT FIXED YET?" RESULTS'), width=200)
-    # if len(rhsa_parsed_results) <= 10:
-    # Takes results and splits then on new line characters
-    # and highlights (aka colors) the CVE, Package, and Status
-    # of the fix state for terminal output
-    for cve in list_of_cves:
-        results_output = ""
-        for result in rhsa_parsed_results:
-            if cve in result:
-                info = result.split("\n")
-                for item in info:
-                    if "CVE" in item:
-                        highlight = item.split(" ", 1)
-                        results_output += f"\n[#ffffff][bold]{highlight[0]}[/] " + f"{highlight[-1]}\n"
-                        continue
-                    if "PACKAGE" in item:
-                        highlight = item.split(":", 1)
-                        results_output += f"{highlight[0]}:[bold #ffffff]{highlight[1]}[/]\n"
-                        continue
-                    if "Fixed" in item or "Not affected" in item or "Will not fix" in item:
-                        highlight = item.split(":")
-                        results_output += f"{highlight[0]}:[good]{highlight[1]}[/]\n"
-                        continue
-                    elif "Affected" in item:
-                        highlight = item.split(":")
-                        results_output += f"{highlight[0]}:[bad]{highlight[1]}[/]\n"
-                        continue
-                    elif "Under investigation" in item or "Fix deferred" in item or "Out of support scope" in item:
-                        highlight = item.split(":")
-                        results_output += f"{highlight[0]}:[warning]{highlight[1]}[/]\n"
-                        continue
-                    results_output += f"{item}\n"
+    with console.capture() as _:
+        console.print(Markdown('# "IS IT FIXED YET?" RESULTS'), width=200)
+        for cve in list_of_cves:
+            results_output = ""
+            for result in rhsa_parsed_results:
+                if cve in result:
+                    info = result.split("\n")
+                    for item in info:
+                        if "CVE" in item:
+                            highlight = item.split(" ", 1)
+                            results_output += f"\n[#ffffff][bold]{highlight[0]}[/] " + f"{highlight[-1]}\n"
+                            continue
+                        if "PACKAGE" in item:
+                            highlight = item.split(":", 1)
+                            results_output += f"{highlight[0]}:[bold #ffffff]{highlight[1]}[/]\n"
+                            continue
+                        if "Fixed" in item or "Not affected" in item or "Will not fix" in item:
+                            highlight = item.split(":")
+                            results_output += f"{highlight[0]}:[good]{highlight[1]}[/]\n"
+                            continue
+                        elif "Affected" in item:
+                            highlight = item.split(":")
+                            results_output += f"{highlight[0]}:[bad]{highlight[1]}[/]\n"
+                            continue
+                        elif "Under investigation" in item or "Fix deferred" in item or "Out of support scope" in item:
+                            highlight = item.split(":")
+                            results_output += f"{highlight[0]}:[warning]{highlight[1]}[/]\n"
+                            continue
+                        results_output += f"{item}\n"
 
-        console.print(Panel(results_output, title=cve, title_align="left", width=200, style=panel_style))
+            console.print(Panel(results_output, title=cve, title_align="left", width=200, style=panel_style))
 
     html_template = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n \
     <style>\n{stylesheet}\nbody {{\n    color: #ffffff;\n    background-color: #2f3030;\n}}\n \
@@ -170,13 +163,17 @@ def rhsa_results_output(rhsa_parsed_results, list_of_cves):
         path="./iify_results.html",
         code_format=html_template,
     )
-    pdfkit.from_file("iify_results.html", "iify_results.pdf")
+    try:
+        config = pdfkit.configuration(wkhtmltopdf='/usr/bin/wkhtmltopdf')
+        pdfkit.from_file("iify_results.html", "iify_results.pdf", configuration=config)
+    except OSError:
+        pdfkit.from_file("iify_results.html", "iify_results.pdf")
 
 
-def get_newest_image_id(image_tag: str):
+def get_newest_image_id(image_name: str):
     r = requests.get(
         f"https://catalog.redhat.com/api/containers/v1/"
-        f"repositories/registry/registry.access.redhat.com/repository/{image_tag}/images?page_size=500"
+        f"repositories/registry/registry.access.redhat.com/repository/{image_name}/images?page_size=500"
     )
     if r.status_code == 200:
         response = r.json()
@@ -184,7 +181,9 @@ def get_newest_image_id(image_tag: str):
 
         for data in response["data"]:
             if data["creation_date"] == sorted(creation_date_list)[-1]:
-                return data["_id"]
+                for repository in data["repositories"]:
+                    for signature in repository["signatures"]:
+                        return data["_id"], sorted(creation_date_list)[-1], signature["tags"]
 
 
 def get_catalog_rpm_data(image_id: str):
@@ -198,11 +197,13 @@ def get_catalog_rpm_data(image_id: str):
         return "Sorry I could not find the image you where looking for. Did you format your Image Tag Correctly?\n - Example: `ubi8/ubi`"
 
 
-def write_catalog_rpm_file(image_tag: str, rpm_data: str):
+def write_catalog_rpm_file(image_name: str, rpm_data: str, image_creation_date: str, image_tag):
     results = (
         "============================================================\n"
-        f"RPM data for the newest release of {image_tag.upper()}"
-        "\n============================================================\n\n"
+        f"RPM data for the newest release of {image_name.upper()}\n\n"
+        f"IMAGE RELEASE DATA: {image_creation_date.split('T')[0]}\n"
+        f"IMAGE TAG(s): {image_tag}\n"
+        "============================================================\n\n"
     )
     results += rpm_data
     with open("rpm_lookup.txt", "w") as f:
@@ -219,6 +220,6 @@ def get_help_text():
         "`/sbom` - Provide a Container Image name from the Red Hat Catalog and get a listing of the image's included RPMs and their version.\n\n"
         ">NOTE: This will only provide the RPMs of newest version of the Container Image provide.\n"
         ">EXAMPLE: `/sbom ubi8/ubi` or `/sbom rhel8/python-38`\n\n\n"
-        "`/art` - Idk, it does stuff that Kent made...\n\n"
+        "`/art` - Idk, it does art stuff that Kent made...\n\n"
         ">EXAMPLE: n/a\n\n\n"
     )

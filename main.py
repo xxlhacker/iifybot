@@ -19,10 +19,11 @@ FORMAT = "%(message)s"
 logging.basicConfig(level="INFO", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()])
 log = logging.getLogger("rich")
 
-# Load Slack API key from .env file
+# Load Slack API keys from .env file
 env_path = Path(".") / ".env"
 load_dotenv(dotenv_path=env_path)
 
+# Set up Flask instance and the Slack Event Adapter
 app = Flask(__name__)
 slack_event_adapter = SlackEventAdapter(os.environ["SIGNING_SECRET"], "/slack/events", app)
 
@@ -39,7 +40,7 @@ async def iify():
     channel_id = data.get("channel_id")
     channel_name = data.get("channel_name")
     sanitized_user_text = bleach.clean(data.get("text"))
-    log.info(f"USER: {data.get('user_name')} | COMMAND: /iffy | INPUT: {sanitized_user_text}", extra={"markup": True})
+    log.info(f"USER: {data.get('user_name')} | COMMAND: /iify | INPUT: {sanitized_user_text}", extra={"markup": True})
     results = await utilities.is_it_fixed_yet(text=sanitized_user_text)
     if results == "use_html_file":
         slack_comment = (
@@ -79,10 +80,15 @@ def sbom():
         channel_name = data.get("channel_name")
         sanitized_user_text = bleach.clean(data.get("text").lower())
         log.info(f"USER: {data.get('user_name')} | COMMAND: /sbom | INPUT: {sanitized_user_text}")
-        image_id = utilities.get_newest_image_id(image_tag=sanitized_user_text)
+        image_id, image_creation_date, image_tag = utilities.get_newest_image_id(image_name=sanitized_user_text)
         rpm_data = utilities.get_catalog_rpm_data(image_id)
-        utilities.write_catalog_rpm_file(image_tag=sanitized_user_text, rpm_data=rpm_data)
-        slack_comment = f"Here are you RPM results for the newest release of `{sanitized_user_text.upper()}`! :smile:"
+        utilities.write_catalog_rpm_file(
+            image_name=sanitized_user_text,
+            rpm_data=rpm_data,
+            image_creation_date=image_creation_date,
+            image_tag=image_tag,
+        )
+        slack_comment = f"Here are your RPM results for the newest release of `{sanitized_user_text.upper()}`! :smile:"
         if channel_name != "directmessage":
             client.files_upload(
                 channels=channel_id,
@@ -123,11 +129,16 @@ def iify_help():
         client.chat_postMessage(channel=user_id, text=help_text)
     return Response(), 200
 
+
 pick = 0
+
 
 @app.route("/art", methods=["POST"])
 def art():
     global pick
+    data = request.form
+    sanitized_user_text = bleach.clean(data.get("text").lower())
+    log.info(f"USER: {data.get('user_name')} | COMMAND: /art | INPUT: {sanitized_user_text}")
     newest_pick = random.choice([1, 2, 3, 4, 5, 6, 7])
     if newest_pick == pick:
         while newest_pick == pick:
@@ -137,12 +148,22 @@ def art():
     user_id = data.get("user_id")
     channel_id = data.get("channel_id")
     channel_name = data.get("channel_name")
-    art = ascii.art(pick)  
-    if channel_name != "directmessage":
-        client.chat_postMessage(channel=channel_id, text=art)
+    if sanitized_user_text == "all":
+        for counter in range(1, 9):
+            art = ascii.art(counter)
+            if channel_name != "directmessage":
+                client.chat_postMessage(channel=channel_id, text=art)
+            else:
+                client.chat_postMessage(channel=user_id, text=art)
+            counter += 1
     else:
-        client.chat_postMessage(channel=user_id, text=art)
+        art = ascii.art(pick)
+        if channel_name != "directmessage":
+            client.chat_postMessage(channel=channel_id, text=art)
+        else:
+            client.chat_postMessage(channel=user_id, text=art)
     return Response(), 200
+
 
 @app.route("/kent", methods=["POST"])
 def kent():
@@ -150,12 +171,14 @@ def kent():
     user_id = data.get("user_id")
     channel_id = data.get("channel_id")
     channel_name = data.get("channel_name")
-    art = ascii.art(9)  
+    log.info(f"USER: {data.get('user_name')} | COMMAND: /kent | INPUT: N/A")
+    art = ascii.art(9)
     if channel_name != "directmessage":
         client.chat_postMessage(channel=channel_id, text=art)
     else:
         client.chat_postMessage(channel=user_id, text=art)
     return Response(), 200
 
+
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=False, host="0.0.0.0", port=5000)
