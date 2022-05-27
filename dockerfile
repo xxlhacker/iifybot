@@ -1,14 +1,10 @@
-FROM registry.access.redhat.com/ubi8/python-39
+FROM registry.fedoraproject.org/fedora-minimal:34
 
-# RUN dnf install -y python39 python38-pip wget xorg-x11-fonts-75dpi xorg-x11-fonts-Type1 libpng libjpeg openssl icu libX11 libXext libXrender
+RUN microdnf install -y python3.9 wkhtmltopdf
 
-RUN dnf install -y python39 python38-pip wget
+WORKDIR /usr/src/app
 
-RUN wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox-0.12.6-1.centos8.x86_64.rpm
-
-RUN rpm -ivh wkhtmltox-0.12.6-1.centos8.x86_64.rpm
-
-COPY . .
+COPY . /usr/src/app/
 
 RUN pip3 install --no-cache-dir --upgrade pip pipenv && \
     pipenv lock --requirements > requirements.txt && \
@@ -16,17 +12,4 @@ RUN pip3 install --no-cache-dir --upgrade pip pipenv && \
 
 EXPOSE 5000
 
-
-
-
-
-#7 0.227    fontconfig is needed by wkhtmltox-1:0.12.6-1.centos8.x86_64                                           
-#7 0.227    freetype is needed by wkhtmltox-1:0.12.6-1.centos8.x86_64                                             
-#7 0.227 	libX11 is needed by wkhtmltox-1:0.12.6-1.centos8.x86_64
-#7 0.227 	libXext is needed by wkhtmltox-1:0.12.6-1.centos8.x86_64
-#7 0.227 	-- libXrender is needed by wkhtmltox-1:0.12.6-1.centos8.x86_64
-#7 0.227 	-- libjpeg is needed by wkhtmltox-1:0.12.6-1.centos8.x86_64
-#7 0.227 	libpng is needed by wkhtmltox-1:0.12.6-1.centos8.x86_64
-#7 0.227 	openssl is needed by wkhtmltox-1:0.12.6-1.centos8.x86_64
-#7 0.227 	-- xorg-x11-fonts-75dpi is needed by wkhtmltox-1:0.12.6-1.centos8.x86_64
-#7 0.227 	-- xorg-x11-fonts-Type1 is needed by wkhtmltox-1:0.12.6-1.centos8.x86_64
+CMD ["python", "./main.py"]
