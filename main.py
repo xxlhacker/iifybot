@@ -35,6 +35,13 @@ bot_id = client.api_call("auth.test")["user_id"]
 
 @app.route("/iify", methods=["POST"])
 async def iify():
+    """
+    Flask route to the "/iify" Slack command.
+    The command take in one or more CVE (space separated) and return back information on the provides CVE(s).
+
+    Returns:
+        200 - Posts a Slack message with the associated CVE data as text or a PDF file.
+    """
     data = request.form
     user_id = data.get("user_id")
     channel_id = data.get("channel_id")
@@ -42,7 +49,17 @@ async def iify():
     sanitized_user_text = bleach.clean(data.get("text"))
     log.info(f"USER: {data.get('user_name')} | COMMAND: /iify | INPUT: {sanitized_user_text}", extra={"markup": True})
     results = await utilities.is_it_fixed_yet(text=sanitized_user_text)
-    if results == "use_html_file":
+    if (
+        results == "No CVEs in user input."
+        and channel_name != "directmessage"
+        or results != "No CVEs in user input."
+        and results != "use_html_file"
+        and channel_name != "directmessage"
+    ):
+        client.chat_postMessage(channel=channel_id, text=results)
+    elif results == "No CVEs in user input." or results != "use_html_file":
+        client.chat_postMessage(channel=user_id, text=results)
+    else:
         slack_comment = (
             "Your results are greater than 3300 characters.\nSo, here's your CVE lookup results as a PDF! :smile:"
         )
@@ -64,15 +81,18 @@ async def iify():
                 filename="iify_results.pdf",
                 filetype="pdf",
             )
-    elif channel_name != "directmessage":
-        client.chat_postMessage(channel=channel_id, text=results)
-    else:
-        client.chat_postMessage(channel=user_id, text=results)
     return Response(), 200
 
 
 @app.route("/sbom", methods=["POST"])
 def sbom():
+    """
+    Flask route to the "/sbom" Slack command.
+    The command take in a Container Image name from the Red Hat Catalog and get a listing of the image's included RPMs and their version.
+
+    Returns:
+        200 - Posts a Slack message with the associated Image RPM data as a .txt file.
+    """
     try:
         data = request.form
         user_id = data.get("user_id")
@@ -117,6 +137,12 @@ def sbom():
 
 @app.route("/iify_help", methods=["POST"])
 def iify_help():
+    """
+    Slash command to get all the iify commands available
+
+    Returns:
+        A list of iify commands and their meanings
+    """
     data = request.form
     user_id = data.get("user_id")
     channel_id = data.get("channel_id")
@@ -133,9 +159,15 @@ def iify_help():
 pick = 0  # global variable for making sure
 # you don't get the same art twice in a row
 
-#
+
 @app.route("/art", methods=["POST"])
 def art():
+    """
+    Slash command to generate sweet ascii art or rotate through them all
+
+    Returns:
+        Sweet ascii art
+    """
     global pick
     data = request.form
     sanitized_user_text = bleach.clean(data.get("text").lower())
@@ -168,6 +200,12 @@ def art():
 
 @app.route("/kent", methods=["POST"])
 def kent():
+    """
+    Special slash command just for Casey
+
+    Returns:
+        A sweet message on the screen for Casey
+    """
     data = request.form
     user_id = data.get("user_id")
     channel_id = data.get("channel_id")

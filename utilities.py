@@ -20,7 +20,22 @@ cve_theme = Theme(
 
 
 async def is_it_fixed_yet(text: str):
+    """
+    Parent function for the "/iify" Slack Command.
+    Take in a CVE or group of CVEs (sanitized string from user) and uses
+    the RH Security API to grab the associated meta data for each CVE and whether there is a fix.
+
+    Args:
+        text (str): A CVE or list a CVEs | Example: "CVE-XXXX-XXXXXX", "CVE-XXXX-XXXXXX CVE-XXXX-XXXXXX CVE-XXXX-XXXXXX"
+
+    Returns:
+        string: Returns a parsed CVE results in a code block format for Slack, or
+        a flag to post a file to Slack because the length of the data is too long
+        for a single message in Slack.
+    """
     list_of_cves = iify_user_input_parser(text=text)
+    if list_of_cves == "No CVEs in user input.":
+        return "No CVEs in user input."
     rhsa_results = await get_rhsa_data(list_of_cves=list_of_cves)
     rhsa_parsed_results = rhsa_data_parser(rhsa_results=rhsa_results, list_of_cves=list_of_cves)
     if len(str(rhsa_parsed_results)) < 3300:
@@ -30,16 +45,34 @@ async def is_it_fixed_yet(text: str):
     return "use_html_file"
 
 
-# Take in User supplied list of CVEs, sanitizes the input, pushes it to "get_rhsa_data()"
 def iify_user_input_parser(text: str):
+    """
+    Takes in User supplied list of CVEs, verifies the input, pushes it to "get_rhsa_data()"
+
+    Args:
+        text (str): Takes in string for CVE(s) provide by a user.
+
+    Returns:
+        list: A list of deduped CVEs for lookup.
+    """
     user_input_list = text.split(" ")
-    list_of_cves = [item.upper() for item in user_input_list if item.upper().startswith("CVE")]
+    list_of_cves = [item.upper() for item in user_input_list if item.upper().startswith("CVE-")]
+    if not list_of_cves:
+        return "No CVEs in user input."
 
     return list(dict.fromkeys(list_of_cves))
 
 
-# Takes in list of CVEs and build the async API calls to retrieve RHSA data for each CVE.
 async def get_rhsa_data(list_of_cves):
+    """
+    Takes in list of CVEs and build the async API calls to retrieve RHSA data for each CVE.
+
+    Args:
+        list_of_cves (list): A list of CVEs for lookup against the RH Security API.
+
+    Returns:
+        list: A list of RHSA security data results for each provide CVE.
+    """
     results = []
     urls = []
     for cve in list_of_cves:
@@ -53,13 +86,31 @@ async def get_rhsa_data(list_of_cves):
     return results
 
 
-# Creates async tasks for the RHSA API calls
 def get_tasks(session, urls):
+    """
+    Creates async tasks for the RHSA API calls
+
+    Args:
+        session (ClientSession): Interface for make HTTP requests.
+        urls (str): list of RHSA urls to pull security data from.
+
+    Returns:
+        list: A list of HTTP responses for each url in the list of RHSA urls provided.
+    """
     return [session.get(url, ssl=True) for url in urls]
 
 
-# Takes in the returned RHSA API results, parses them, and returns a formatted version of the data
 def rhsa_data_parser(rhsa_results, list_of_cves):
+    """
+    Takes in the returned RHSA API results, parses them, and returns a formatted version of the data
+
+    Args:
+        rhsa_results (list): List of RHSA Data
+        list_of_cves (list): List of User provided CVEs
+
+    Returns:
+        list: List of parsed RHSA data that can be formatted easly for Slack.
+    """
     results = []
     for cve in list_of_cves:
         for r in rhsa_results:
@@ -98,14 +149,22 @@ def rhsa_data_parser(rhsa_results, list_of_cves):
                                 parsed_string += "  > UPSTREAM FIX: No Data\n"
                             parsed_string += f'  > CPE: {data["cpe"]}\n\n'
                             results.append(parsed_string)
-        # If any CVE from the User's input is not present in the returned RHSA data,
-        # it still call out that CVE, stating it does not having data via a string in the return 'results' data.
         if cve not in str(results):
             results.append(f"{cve}\n  > No Data Found\n")
     return sorted(results)
 
 
 def iify_slack_output_formater(rhsa_parsed_results, list_of_cves):
+    """
+    Takes in the list of CVEs and parsed RHSA results and formats them to be displayed in Slack.
+
+    Args:
+        rhsa_parsed_results (list): List of parsed RHSA data
+        list_of_cves (list): List of User provided CVEs
+
+    Returns:
+        str: Returns parsed CVE results in a code block format for Slack.
+    """
     return_str = ""
     for cve in list_of_cves:
         return_str += f"\n======================\n{cve}\n======================\n"
@@ -117,9 +176,15 @@ def iify_slack_output_formater(rhsa_parsed_results, list_of_cves):
     return return_str
 
 
-# Takes the final formatted version of the RHSA data and prints it to the terminal,
-# or writes that data to a file depending on the length of the results.
 def rhsa_results_output(rhsa_parsed_results, list_of_cves):
+    """
+    Takes the final formatted version of the RHSA data and posted it to Slack as plain text,
+    or writes that data to a PDF file depending on the length of the results.
+
+    Args:
+        rhsa_parsed_results (list): List of parsed RHSA data
+        list_of_cves (list): List of User provided CVEs
+    """
     console = Console(theme=cve_theme, record=True)
     panel_style = "#03fce3"
     with console.capture() as _:
@@ -171,6 +236,17 @@ def rhsa_results_output(rhsa_parsed_results, list_of_cves):
 
 
 def get_newest_image_id(image_name: str):
+    """
+    Takes in User provided Container Image Name and used the RH Catalog API
+    to look the newest image version's Catalog ID
+
+    Args:
+        image_name (str): User provided Container Image Name
+
+    Returns:
+        string: Returns the Catalog ID, Creation Date, and Image Tag information for
+        the newest version of the User provided Container Image Name
+    """
     r = requests.get(
         f"https://catalog.redhat.com/api/containers/v1/"
         f"repositories/registry/registry.access.redhat.com/repository/{image_name}/images?page_size=500"
@@ -187,6 +263,17 @@ def get_newest_image_id(image_name: str):
 
 
 def get_catalog_rpm_data(image_id: str):
+    """
+    Uses the provide Catalog ID from "get_newest_image_id()" to get the RPM data
+    for the Container Image.
+
+    Args:
+        image_id (str): The Catalog ID a a Container Image
+
+    Returns:
+        string: Return either a string containing the image RPM data, or a
+        string stated the image data could not be found.
+    """
     try:
         r = requests.get(f"https://catalog.redhat.com/api/containers/v1/images/id/{image_id}/rpm-manifest")
         if r.status_code == 200:
@@ -198,6 +285,16 @@ def get_catalog_rpm_data(image_id: str):
 
 
 def write_catalog_rpm_file(image_name: str, rpm_data: str, image_creation_date: str, image_tag):
+    """
+    Writes the collected Container Image data from RH Catalog to a txt file
+    and push the file to Slack.
+
+    Args:
+        image_name (str): User provided Container Image Name.
+        rpm_data (str): RH Catalog RPM data for a provide Container Image.
+        image_creation_date (str): The new RH Catalog Create Date information for the provide Container Image.
+        image_tag (list): List of Iamge Tag associated with a Container Image from RH Catalog.
+    """
     results = (
         "============================================================\n"
         f"RPM data for the newest release of {image_name.upper()}\n\n"
@@ -211,6 +308,11 @@ def write_catalog_rpm_file(image_name: str, rpm_data: str, image_creation_date: 
 
 
 def get_help_text():
+    """Help text for the /iify help command in Slack
+
+    Returns:
+       str: Description of each iify slash command
+    """
     return (
         "==============================\n"
         '*IIFY "/" (Slash) Commands*\n'
