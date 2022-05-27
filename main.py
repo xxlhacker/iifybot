@@ -6,6 +6,8 @@ import certifi
 import utilities
 import bleach
 import logging
+import ascii
+import random
 from rich.logging import RichHandler
 from pathlib import Path
 from dotenv import load_dotenv
@@ -121,6 +123,39 @@ def iify_help():
         client.chat_postMessage(channel=user_id, text=help_text)
     return Response(), 200
 
+pick = 0
+
+@app.route("/art", methods=["POST"])
+def art():
+    global pick
+    newest_pick = random.choice([1, 2, 3, 4, 5, 6, 7])
+    if newest_pick == pick:
+        while newest_pick == pick:
+            newest_pick = random.choice([1, 2, 3, 4, 5, 6, 7])
+    pick = newest_pick
+    data = request.form
+    user_id = data.get("user_id")
+    channel_id = data.get("channel_id")
+    channel_name = data.get("channel_name")
+    art = ascii.art(pick)  
+    if channel_name != "directmessage":
+        client.chat_postMessage(channel=channel_id, text=art)
+    else:
+        client.chat_postMessage(channel=user_id, text=art)
+    return Response(), 200
+
+@app.route("/kent", methods=["POST"])
+def kent():
+    data = request.form
+    user_id = data.get("user_id")
+    channel_id = data.get("channel_id")
+    channel_name = data.get("channel_name")
+    art = ascii.art(9)  
+    if channel_name != "directmessage":
+        client.chat_postMessage(channel=channel_id, text=art)
+    else:
+        client.chat_postMessage(channel=user_id, text=art)
+    return Response(), 200
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
