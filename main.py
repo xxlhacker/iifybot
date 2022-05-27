@@ -128,10 +128,10 @@ pick = 0
 @app.route("/art", methods=["POST"])
 def art():
     global pick
-    newest_pick = random.choice([1, 2, 3, 4, 5, 6, 7])
+    newest_pick = random.choice([1, 2, 3, 4, 5, 6])
     if newest_pick == pick:
         while newest_pick == pick:
-            newest_pick = random.choice([1, 2, 3, 4, 5, 6, 7])
+            newest_pick = random.choice([1, 2, 3, 4, 5, 6])
     pick = newest_pick
     data = request.form
     user_id = data.get("user_id")
