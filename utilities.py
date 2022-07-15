@@ -221,8 +221,8 @@ def rhsa_results_output(rhsa_parsed_results, list_of_cves):
 
     html_template = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="UTF-8">\n \
     <style>\n{stylesheet}\nbody {{\n    color: #ffffff;\n    background-color: #2f3030;\n}}\n \
-    </style>\n</head>\n<html>\n<body>\n    <code>\n        <pre style="font-family:Menlo,\'DejaVu Sans Mono\',consolas, \
-    \'Courier New\',monospace"><font size="2">{code}</font></pre>\n    </code>\n</body>\n</html>\n'
+    </style>\n</head>\n<html>\n<body>\n <code>\n \
+    <pre style="font-family:DejaVu Sans Mono"><font size="2">{code}</font></pre>\n    </code>\n</body>\n</html>\n'
 
     console.save_html(
         path="./iify_results.html",

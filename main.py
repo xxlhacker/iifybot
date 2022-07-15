@@ -19,10 +19,6 @@ FORMAT = "%(message)s"
 logging.basicConfig(level="INFO", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()])
 log = logging.getLogger("rich")
 
-# Load Slack API keys from .env file
-env_path = Path(".") / ".env"
-load_dotenv(dotenv_path=env_path)
-
 # Set up Flask instance and the Slack Event Adapter
 app = Flask(__name__)
 slack_event_adapter = SlackEventAdapter(os.environ["SIGNING_SECRET"], "/slack/events", app)
