@@ -15,6 +15,7 @@ requests = "*"
 bleach = "*"
 pdfkit = "*"
 aiohttp = "==3.8.1"
+pre-commit = "*"
 
 [dev-packages]
 
