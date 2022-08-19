@@ -1,219 +1,158 @@
-from aiohttp import request
 import slack_sdk
 import os
 import ssl
 import certifi
-import utilities
 import bleach
+import utilities
 import logging
 import ascii
 import random
 from rich.logging import RichHandler
-from pathlib import Path
-from dotenv import load_dotenv
-from flask import Flask, request, Response
-from slackeventsapi import SlackEventAdapter
+from slack_bolt.app.async_app import AsyncApp
 
-# Rich Logging Setup
+
+# Sets up Rich Logging
 FORMAT = "%(message)s"
 logging.basicConfig(level="INFO", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()])
 log = logging.getLogger("rich")
 
-# Set up Flask instance and the Slack Event Adapter
-app = Flask(__name__)
-slack_event_adapter = SlackEventAdapter(os.environ["SIGNING_SECRET"], "/slack/events", app)
 
-# Provide SSL Context from Certifi, and set up Slack Client
-ssl_context = ssl.create_default_context(cafile=certifi.where())
-client = slack_sdk.WebClient(token=os.environ["SLACK_BOT_TOKEN"], ssl=ssl_context)
-bot_id = client.api_call("auth.test")["user_id"]
+# Sets up the Async Slack app and uses the "SLACK_BOT_TOKEN" and "SIGNING_SECRET" environment variables.
+if "SLACK_BOT_TOKEN" and "SIGNING_SECRET" in os.environ:
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    client = slack_sdk.web.async_client.AsyncWebClient(token=os.environ["SLACK_BOT_TOKEN"], ssl=ssl_context)
+    app = AsyncApp(signing_secret=os.environ.get("SIGNING_SECRET"), client=client)
+else:
+    log.error(
+        'App Failed to start. You must supply the "Slack Bot Token" and the "Slack Signing Secret" as environment variables.'
+    )
+    quit()
 
 
-@app.route("/iify", methods=["POST"])
-async def iify():
+@app.command("/iify")
+async def iify(ack, body, say, client):
     """
-    Flask route to the "/iify" Slack command.
     The command take in one or more CVE (space separated) and return back information on the provides CVE(s).
 
     Returns:
         200 - Posts a Slack message with the associated CVE data as text or a PDF file.
     """
-    data = request.form
-    user_id = data.get("user_id")
-    channel_id = data.get("channel_id")
-    channel_name = data.get("channel_name")
-    sanitized_user_text = bleach.clean(data.get("text"))
-    log.info(f"USER: {data.get('user_name')} | COMMAND: /iify | INPUT: {sanitized_user_text}", extra={"markup": True})
-    results = await utilities.is_it_fixed_yet(text=sanitized_user_text)
-    if (
-        results == "No CVEs in user input."
-        and channel_name != "directmessage"
-        or results != "No CVEs in user input."
-        and results != "use_html_file"
-        and channel_name != "directmessage"
-    ):
-        client.chat_postMessage(channel=channel_id, text=results)
-    elif results == "No CVEs in user input." or results != "use_html_file":
-        client.chat_postMessage(channel=user_id, text=results)
-    else:
-        slack_comment = (
-            "Your results are greater than 3300 characters.\nSo, here's your CVE lookup results as a PDF! :smile:"
-        )
-        if channel_name != "directmessage":
-            client.files_upload(
-                channels=channel_id,
-                initial_comment=slack_comment,
-                file="./iify_results.pdf",
-                title="iify_results.pdf",
-                filename="iify_results.pdf",
-                filetype="pdf",
-            )
+    log.info(body)
+    await ack()
+    input_err_message = "There were no CVE(s) provided in your command."
+    if "text" in body:
+        await say("Let me get that CVE data for you, hang tight!")
+        sanitized_user_text = bleach.clean(body["text"])
+        results = await utilities.is_it_fixed_yet(text=sanitized_user_text, input_err_message=input_err_message)
+        if results == input_err_message:
+            await say(input_err_message)
         else:
-            client.files_upload(
-                channels=user_id,
-                initial_comment=slack_comment,
-                file="./iify_results.pdf",
-                title="iify_results.pdf",
-                filename="iify_results.pdf",
-                filetype="pdf",
-            )
-    return Response(), 200
+            await utilities.is_it_fixed_yet_preflight_check(results, client, body)
+    else:
+        await say(input_err_message)
 
 
-@app.route("/sbom", methods=["POST"])
-def sbom():
+@app.command("/sbom")
+async def sbom(ack, body, say, client):
     """
-    Flask route to the "/sbom" Slack command.
     The command take in a Container Image name from the Red Hat Catalog and get a listing of the image's included RPMs and their version.
 
     Returns:
         200 - Posts a Slack message with the associated Image RPM data as a .txt file.
     """
+    log.info(body)
+    await ack()
+    err_message = (
+        "Sorry I could not find the image you where looking for. Did you format your Image Tag Correctly?\n"
+        " - Example: `ubi8/ubi` or `rhel8/python-38`\n\n"
+        "Additionally, the Catalog API may be experiencing issues. It may be worth checking...\n"
+        " - RH Catalog: https://catalog.redhat.com/software/containers/search"
+    )
     try:
-        data = request.form
-        user_id = data.get("user_id")
-        channel_id = data.get("channel_id")
-        channel_name = data.get("channel_name")
-        sanitized_user_text = bleach.clean(data.get("text").lower())
-        log.info(f"USER: {data.get('user_name')} | COMMAND: /sbom | INPUT: {sanitized_user_text}")
-        image_id, image_creation_date, image_tag = utilities.get_newest_image_id(image_name=sanitized_user_text)
-        rpm_data = utilities.get_catalog_rpm_data(image_id)
-        utilities.write_catalog_rpm_file(
-            image_name=sanitized_user_text,
-            rpm_data=rpm_data,
-            image_creation_date=image_creation_date,
-            image_tag=image_tag,
-        )
-        slack_comment = f"Here are your RPM results for the newest release of `{sanitized_user_text.upper()}`! :smile:"
-        if channel_name != "directmessage":
-            client.files_upload(
-                channels=channel_id,
-                initial_comment=slack_comment,
-                file="./rpm_lookup.txt",
-                title="rpm_lookup.txt",
-                filename="rpm_lookup.txt",
+        if "text" in body:
+            await say("Let me get that SBOM data for you, hang tight!")
+            sanitized_user_text = bleach.clean(str(body["text"]).lower())
+            image_id, build_name, last_updated_timestamp = utilities.get_newest_image_id(
+                image_name=sanitized_user_text
             )
+            rpm_data = utilities.get_catalog_rpm_data(image_id=image_id, err_message=err_message)
+            if rpm_data == err_message:
+                await say(err_message)
+            else:
+                utilities.write_catalog_rpm_file(
+                    image_name=sanitized_user_text,
+                    rpm_data=rpm_data,
+                    image_creation_date=last_updated_timestamp,
+                    image_tag=build_name,
+                )
+            await utilities.sbom_preflight_check(text=sanitized_user_text, client=client, body=body)
         else:
-            client.files_upload(
-                channels=user_id,
-                initial_comment=slack_comment,
-                file="./rpm_lookup.txt",
-                title="rpm_lookup.txt",
-                filename="rpm_lookup.txt",
-            )
-        return Response(), 200
+            await say(err_message)
     except TypeError:
-        text = "Sorry I could not find the image you where looking for. Did you format your Image Tag Correctly?\n - Example: `ubi8/ubi` or `rhel8/python-38`"
-        if channel_name != "directmessage":
-            client.chat_postMessage(channel=channel_id, text=text)
-        else:
-            client.chat_postMessage(channel=user_id, text=text)
-        return Response(), 200
+        await say(err_message)
 
 
-@app.route("/iify_help", methods=["POST"])
-def iify_help():
+@app.command("/iify_help")
+async def iify_help(ack, body, say):
     """
-    Slash command to get all the iify commands available
+    Command to get details on all the iify commands available
 
     Returns:
         A list of iify commands and their meanings
     """
-    data = request.form
-    user_id = data.get("user_id")
-    channel_id = data.get("channel_id")
-    channel_name = data.get("channel_name")
-    log.info(f"USER: {data.get('user_name')} | COMMAND: /iify_help | INPUT: N/A")
+    log.info(body)
+    await ack()
     help_text = utilities.get_help_text()
-    if channel_name != "directmessage":
-        client.chat_postMessage(channel=channel_id, text=help_text)
-    else:
-        client.chat_postMessage(channel=user_id, text=help_text)
-    return Response(), 200
+    await say(help_text)
 
 
-pick = 0  # global variable for making sure
+# global variable "pick" for making sure
 # you don't get the same art twice in a row
+pick = 0
 
 
-@app.route("/art", methods=["POST"])
-def art():
+@app.command("/art")
+async def art(ack, body, say):
     """
-    Slash command to generate sweet ascii art or rotate through them all
+    Command to generate sweet ascii art or rotate through them all
 
     Returns:
         Sweet ascii art
     """
+    log.info(body)
+    await ack()
     global pick
-    data = request.form
-    sanitized_user_text = bleach.clean(data.get("text").lower())
-    log.info(f"USER: {data.get('user_name')} | COMMAND: /art | INPUT: {sanitized_user_text}")
-    newest_pick = random.choice([1, 2, 3, 4, 5, 6, 7])
-    if newest_pick == pick:
-        while newest_pick == pick:
-            newest_pick = random.choice([1, 2, 3, 4, 5, 6, 7])
-    pick = newest_pick
-    data = request.form
-    user_id = data.get("user_id")
-    channel_id = data.get("channel_id")
-    channel_name = data.get("channel_name")
-    if sanitized_user_text == "all":
-        for counter in range(1, 9):
-            art = ascii.art(counter)
-            if channel_name != "directmessage":
-                client.chat_postMessage(channel=channel_id, text=art)
-            else:
-                client.chat_postMessage(channel=user_id, text=art)
-            counter += 1
+    # data = request.form
+    if "text" in body:
+        sanitized_user_text = bleach.clean(str(body["text"]).lower())
+        if sanitized_user_text == "all":
+            for counter in range(1, 9):
+                art = ascii.art(counter)
+                await say(art)
+                counter += 1
     else:
+        newest_pick = random.choice([1, 2, 3, 4, 5, 6, 7])
+        if newest_pick == pick:
+            while newest_pick == pick:
+                newest_pick = random.choice([1, 2, 3, 4, 5, 6, 7])
+        pick = newest_pick
         art = ascii.art(pick)
-        if channel_name != "directmessage":
-            client.chat_postMessage(channel=channel_id, text=art)
-        else:
-            client.chat_postMessage(channel=user_id, text=art)
-    return Response(), 200
+        await say(art)
 
 
-@app.route("/kent", methods=["POST"])
-def kent():
+@app.command("/kent")
+async def kent(ack, body, say):
     """
-    Special slash command just for Casey
+    Special command just for Casey
 
     Returns:
         A sweet message on the screen for Casey
     """
-    data = request.form
-    user_id = data.get("user_id")
-    channel_id = data.get("channel_id")
-    channel_name = data.get("channel_name")
-    log.info(f"USER: {data.get('user_name')} | COMMAND: /kent | INPUT: N/A")
-    art = ascii.art(9)
-    if channel_name != "directmessage":
-        client.chat_postMessage(channel=channel_id, text=art)
-    else:
-        client.chat_postMessage(channel=user_id, text=art)
-    return Response(), 200
+    log.info(body)
+    await ack()
+    art = ascii.art("kent")
+    await say(art)
 
 
 if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=5000)
+    app.start(port=5000, host="0.0.0.0", path="/slack/events")
