@@ -1,2 +1,2 @@
 # iifybot
-# This is Development currently
+# This is currently under development
