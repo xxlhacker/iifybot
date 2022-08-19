@@ -4,11 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-python-dotenv = "*"
 certifi = "*"
-slack-sdk = "*"
-flask = {extras = ["async"], version = "*"}
-slackeventsapi = "*"
 black = "*"
 rich = "==11.2.0"
 requests = "*"
@@ -16,6 +12,7 @@ bleach = "*"
 pdfkit = "*"
 aiohttp = "==3.8.1"
 pre-commit = "*"
+slack-bolt = "*"
 
 [dev-packages]
 

@@ -7,7 +7,6 @@ from rich.theme import Theme
 from rich.panel import Panel
 from rich.markdown import Markdown
 
-
 cve_theme = Theme(
     {
         "good": "#42ef4f bold",
@@ -19,7 +18,7 @@ cve_theme = Theme(
 )
 
 
-async def is_it_fixed_yet(text: str):
+async def is_it_fixed_yet(text, input_err_message):
     """
     Parent function for the "/iify" Slack Command.
     Take in a CVE or group of CVEs (sanitized string from user) and uses
@@ -33,9 +32,9 @@ async def is_it_fixed_yet(text: str):
         a flag to post a file to Slack because the length of the data is too long
         for a single message in Slack.
     """
-    list_of_cves = iify_user_input_parser(text=text)
-    if list_of_cves == "No CVEs in user input.":
-        return "No CVEs in user input."
+    list_of_cves = iify_user_input_parser(text=text, input_err_message=input_err_message)
+    if list_of_cves == input_err_message:
+        return list_of_cves
     rhsa_results = await get_rhsa_data(list_of_cves=list_of_cves)
     rhsa_parsed_results = rhsa_data_parser(rhsa_results=rhsa_results, list_of_cves=list_of_cves)
     if len(str(rhsa_parsed_results)) < 3300:
@@ -45,7 +44,40 @@ async def is_it_fixed_yet(text: str):
     return "use_html_file"
 
 
-def iify_user_input_parser(text: str):
+async def is_it_fixed_yet_preflight_check(results, client, body):
+    """
+    Take in the results and determines whether to send the data to the requester as
+    plain text or a PDF file.
+    """
+    if results != "use_html_file" and body["channel_name"] != "directmessage":
+        await client.chat_postMessage(channel=body["channel_id"], text=results)
+    elif results != "use_html_file":
+        await client.chat_postMessage(channel=body["user_id"], text=results)
+    else:
+        slack_comment = (
+            "Your results are greater than 3300 characters.\nSo, here's your CVE lookup results as a PDF!  :smile:"
+        )
+        if body["channel_name"] != "directmessage":
+            await client.files_upload(
+                channels=body["channel_id"],
+                initial_comment=slack_comment,
+                file="./iify_results.pdf",
+                title="iify_results.pdf",
+                filename="iify_results.pdf",
+                filetype="pdf",
+            )
+        else:
+            await client.files_upload(
+                channels=body["user_id"],
+                initial_comment=slack_comment,
+                file="./iify_results.pdf",
+                title="iify_results.pdf",
+                filename="iify_results.pdf",
+                filetype="pdf",
+            )
+
+
+def iify_user_input_parser(text, input_err_message):
     """
     Takes in User supplied list of CVEs, verifies the input, pushes it to "get_rhsa_data()"
 
@@ -57,10 +89,8 @@ def iify_user_input_parser(text: str):
     """
     user_input_list = text.split(" ")
     list_of_cves = [item.upper() for item in user_input_list if item.upper().startswith("CVE-")]
-    if not list_of_cves:
-        return "No CVEs in user input."
 
-    return list(dict.fromkeys(list_of_cves))
+    return list(dict.fromkeys(list_of_cves)) if list_of_cves else input_err_message
 
 
 async def get_rhsa_data(list_of_cves):
@@ -235,40 +265,39 @@ def rhsa_results_output(rhsa_parsed_results, list_of_cves):
         pdfkit.from_file("iify_results.html", "iify_results.pdf")
 
 
-def get_newest_image_id(image_name: str):
+def get_newest_image_id(image_name):
     """
     Takes in User provided Container Image Name and used the RH Catalog API
-    to look the newest image version's Catalog ID
+    to look the newest image version's Catalog ID. Of the return RH Catalog API
+    data we look at the last entry to get the data for the newest image.
 
     Args:
         image_name (str): User provided Container Image Name
 
     Returns:
-        string: Returns the Catalog ID, Creation Date, and Image Tag information for
-        the newest version of the User provided Container Image Name
+        image_id, build_name, last_updated_timestamp
     """
     r = requests.get(
         f"https://catalog.redhat.com/api/containers/v1/"
-        f"repositories/registry/registry.access.redhat.com/repository/{image_name}/images?page_size=500"
+        f"repositories/registry/registry.access.redhat.com/repository/{image_name}"
+        f"/images?page_size=500&include=data._id,data.brew.build,data.architecture,data.last_update_date"
     )
     if r.status_code == 200:
         response = r.json()
-        creation_date_list = [data["creation_date"] for data in response["data"] if data["architecture"] == "amd64"]
-
+        list_of_image_ids = [data["_id"] for data in response["data"] if data["architecture"] == "amd64"]
         for data in response["data"]:
-            if data["creation_date"] == sorted(creation_date_list)[-1]:
-                for repository in data["repositories"]:
-                    for signature in repository["signatures"]:
-                        return data["_id"], sorted(creation_date_list)[-1], signature["tags"]
+            if data["_id"] == list_of_image_ids[-1]:
+                return data["_id"], data["brew"]["build"], data["last_update_date"]
 
 
-def get_catalog_rpm_data(image_id: str):
+def get_catalog_rpm_data(image_id, err_message):
     """
     Uses the provide Catalog ID from "get_newest_image_id()" to get the RPM data
     for the Container Image.
 
     Args:
         image_id (str): The Catalog ID a a Container Image
+        err_message (str): Predefined error message
 
     Returns:
         string: Return either a string containing the image RPM data, or a
@@ -281,10 +310,10 @@ def get_catalog_rpm_data(image_id: str):
             rpm_data_list = [f"{rpms['nvra']}" for rpms in response["rpms"]]
             return "".join(f"{item}\n" for item in sorted(rpm_data_list))
     except KeyError:
-        return "Sorry I could not find the image you where looking for. Did you format your Image Tag Correctly?\n - Example: `ubi8/ubi`"
+        return err_message
 
 
-def write_catalog_rpm_file(image_name: str, rpm_data: str, image_creation_date: str, image_tag):
+def write_catalog_rpm_file(image_name, rpm_data, image_creation_date, image_tag):
     """
     Writes the collected Container Image data from RH Catalog to a txt file
     and push the file to Slack.
@@ -298,7 +327,7 @@ def write_catalog_rpm_file(image_name: str, rpm_data: str, image_creation_date: 
     results = (
         "============================================================\n"
         f"RPM data for the newest release of {image_name.upper()}\n\n"
-        f"IMAGE RELEASE DATA: {image_creation_date.split('T')[0]}\n"
+        f"IMAGE LAST UPDATED: {image_creation_date.split('T')[0]}\n"
         f"IMAGE TAG(s): {image_tag}\n"
         "============================================================\n\n"
     )
@@ -307,11 +336,34 @@ def write_catalog_rpm_file(image_name: str, rpm_data: str, image_creation_date: 
         f.write(results)
 
 
+async def sbom_preflight_check(text, client, body):
+    """
+    Setup up the SBOM data to be sent to the requester.
+    """
+    slack_comment = f"Here are your RPM results for the newest release of `{text.upper()}`!  :smile:"
+    if body["channel_name"] != "directmessage":
+        await client.files_upload(
+            channels=body["channel_id"],
+            initial_comment=slack_comment,
+            file="./rpm_lookup.txt",
+            title="rpm_lookup.txt",
+            filename="rpm_lookup.txt",
+        )
+    else:
+        await client.files_upload(
+            channels=body["user_id"],
+            initial_comment=slack_comment,
+            file="./rpm_lookup.txt",
+            title="rpm_lookup.txt",
+            filename="rpm_lookup.txt",
+        )
+
+
 def get_help_text():
     """Help text for the /iify help command in Slack
 
     Returns:
-       str: Description of each iify slash command
+        str: Description of each iify slash command
     """
     return (
         "==============================\n"
