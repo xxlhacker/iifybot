@@ -13,7 +13,7 @@ COPY . /usr/src/app/
 RUN mv /usr/src/app/fonts/* /usr/share/fonts
 
 RUN pip3 install --no-cache-dir --upgrade pip pipenv && \
-    pipenv lock --requirements > requirements.txt && \
+    pipenv requirements > requirements.txt && \
     pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 5000
