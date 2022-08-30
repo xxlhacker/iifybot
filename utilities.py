@@ -369,11 +369,11 @@ def get_help_text():
         "==============================\n"
         '*IIFY "/" (Slash) Commands*\n'
         "==============================\n\n"
-        "`/iffy` - This command gives back information on one or more CVEs\n\n"
+        "`/iify` - This command gives back information on one or more CVEs\n\n"
         ">EXAMPLE: `/iffy cve-xxxx-xxxxx` or `/iffy cve-xxxx-xxxxx cve-xxxx-xxxxx cve-xxxx-xxxxx`\n\n\n"
         "`/sbom` - Provide a Container Image name from the Red Hat Catalog and get a listing of the image's included RPMs and their version.\n\n"
-        ">NOTE: This will only provide the RPMs of newest version of the Container Image provide.\n"
+        ">NOTE: This will only provide the RPMs of newest version of the Container Image provided.\n"
         ">EXAMPLE: `/sbom ubi8/ubi` or `/sbom rhel8/python-38`\n\n\n"
-        "`/art` - Idk, it does art stuff that Kent made...\n\n"
+        "`/iifyart` - Provides a random piece of ASCII art created by the man, the myth, the legend Kent Aycoth\n\n"
         ">EXAMPLE: n/a\n\n\n"
     )

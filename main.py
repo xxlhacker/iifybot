@@ -92,7 +92,7 @@ async def sbom(ack, body, say, client):
         await say(err_message)
 
 
-@app.command("/iify_help")
+@app.command("/iifyhelp")
 async def iify_help(ack, body, say):
     """
     Command to get details on all the iify commands available
@@ -111,7 +111,7 @@ async def iify_help(ack, body, say):
 pick = 0
 
 
-@app.command("/art")
+@app.command("/iifyart")
 async def art(ack, body, say):
     """
     Command to generate sweet ascii art or rotate through them all
