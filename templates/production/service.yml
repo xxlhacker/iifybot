@@ -1,0 +1,13 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: iifybot-service
+  namespace: iifybot
+spec:
+  ports:
+    - name: slack-events
+      protocol: TCP
+      port: 5000
+      targetPort: 5000
+  selector:
+    app: iifybot

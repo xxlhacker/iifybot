@@ -1,0 +1,47 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  annotations:
+    email: clouddot-security@redhat.com
+  name: iifybot
+  namespace: iifybot
+  labels:
+    owner: platform-security
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: iifybot
+  template:
+    metadata:
+      labels:
+        app: iifybot
+    spec:
+      containers:
+        - name: iifybot
+          image: 'quay.io/caswilli_insights/iifybot'  # An Image Tag will need to be added on Deployment
+          ports:
+            - containerPort: 5000
+              protocol: TCP
+          env:
+            - name: SLACK_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: iifybot-slack-secrets
+                  key: SLACK_BOT_TOKEN
+            - name: SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: iifybot-slack-secrets
+                  key: SIGNING_SECRET
+          resources:
+            limits:
+              cpu: 500m
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+          imagePullPolicy: IfNotPresent
+      restartPolicy: Always
+      securityContext:
+        runAsNonRoot: true
