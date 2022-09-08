@@ -1,0 +1,16 @@
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: iifybot-preprod-route
+  namespace: iifybot
+spec:
+  host: iifybot-preprod-route-iifybot.apps.crcd01ue1.zmsj.p1.openshiftapps.com
+  path: /slack/events
+  to:
+    kind: Service
+    name: iifybot-preprod-service
+  port:
+    targetPort: slack-events
+  tls:
+    termination: edge
+  wildcardPolicy: None
